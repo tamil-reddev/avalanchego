@@ -25,6 +25,7 @@ import (
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/engine/snowman/block"
 	"github.com/ava-labs/avalanchego/utils/json"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/version"
 	"github.com/ava-labs/avalanchego/vms/example/warpcustomvm/api"
 	xblock "github.com/ava-labs/avalanchego/vms/example/warpcustomvm/block"
@@ -80,15 +81,25 @@ func (vm *VM) Initialize(
 
 	// Create ACP-118 handler for Warp message signing
 	// This is CRITICAL for ICM relayers to work!
+	verifier := &warpVerifier{vm: vm}
 	acp118Handler := acp118.NewHandler(
-		&warpVerifier{vm: vm},
+		verifier,
 		chainContext.WarpSigner,
 	)
-	if err := vm.Network.AddHandler(p2p.SignatureRequestHandlerID, acp118Handler); err != nil {
+
+	// Wrap handler to add logging
+	loggingHandler := &loggingACP118Handler{
+		Handler: acp118Handler,
+		log:     chainContext.Log,
+	}
+
+	if err := vm.Network.AddHandler(p2p.SignatureRequestHandlerID, loggingHandler); err != nil {
 		return fmt.Errorf("failed to add acp118 handler: %w", err)
 	}
 
-	chainContext.Log.Info("ACP-118 Warp signature handler registered successfully")
+	chainContext.Log.Info("ACP-118 Warp signature handler registered successfully",
+		zap.String("handlerID", fmt.Sprintf("%d", p2p.SignatureRequestHandlerID)),
+	)
 
 	vm.chainContext = chainContext
 	vm.acceptedState = db
@@ -189,6 +200,12 @@ func (vm *VM) CreateHandlers(context.Context) (map[string]http.Handler, error) {
 	// Register the API service with the RPC server
 	if err := server.RegisterService(apiServer, "warpcustomvm"); err != nil {
 		return nil, fmt.Errorf("failed to register service: %w", err)
+	}
+
+	// Register the same API service with "warp" prefix for ICM relayer compatibility
+	// The relayer expects warp_getMessageAggregateSignature endpoint
+	if err := server.RegisterService(apiServer, "warp"); err != nil {
+		return nil, fmt.Errorf("failed to register warp service: %w", err)
 	}
 
 	// Create and register EVM-compatible API service for eth_chainId
@@ -353,23 +370,48 @@ func (vm *VM) GetBlockIDAtHeight(_ context.Context, height uint64) (ids.ID, erro
 }
 
 // AppGossip implements the block.ChainVM interface
-func (vm *VM) AppGossip(context.Context, ids.NodeID, []byte) error {
-	return nil
+func (vm *VM) AppGossip(ctx context.Context, nodeID ids.NodeID, msg []byte) error {
+	vm.chainContext.Log.Debug("📡 AppGossip received",
+		zap.String("from", nodeID.String()),
+		zap.Int("messageSize", len(msg)),
+	)
+
+	return vm.Network.AppGossip(ctx, nodeID, msg)
 }
 
 // AppRequest implements the block.ChainVM interface
-func (vm *VM) AppRequest(context.Context, ids.NodeID, uint32, time.Time, []byte) error {
-	return nil
+// This is CRITICAL: Routes P2P requests (including ACP-118 signature requests) to the P2P network handlers
+func (vm *VM) AppRequest(ctx context.Context, nodeID ids.NodeID, requestID uint32, deadline time.Time, request []byte) error {
+	vm.chainContext.Log.Info("📨 AppRequest received - routing to P2P network",
+		zap.String("from", nodeID.String()),
+		zap.Uint32("requestID", requestID),
+		zap.Int("requestSize", len(request)),
+	)
+
+	// Route to P2P network which will dispatch to registered handlers (including ACP-118)
+	return vm.Network.AppRequest(ctx, nodeID, requestID, deadline, request)
 }
 
 // AppResponse implements the block.ChainVM interface
-func (vm *VM) AppResponse(context.Context, ids.NodeID, uint32, []byte) error {
-	return nil
+func (vm *VM) AppResponse(ctx context.Context, nodeID ids.NodeID, requestID uint32, response []byte) error {
+	vm.chainContext.Log.Debug("📬 AppResponse received",
+		zap.String("from", nodeID.String()),
+		zap.Uint32("requestID", requestID),
+		zap.Int("responseSize", len(response)),
+	)
+
+	return vm.Network.AppResponse(ctx, nodeID, requestID, response)
 }
 
 // AppRequestFailed implements the block.ChainVM interface
-func (vm *VM) AppRequestFailed(context.Context, ids.NodeID, uint32, *common.AppError) error {
-	return nil
+func (vm *VM) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32, appErr *common.AppError) error {
+	vm.chainContext.Log.Warn("❌ AppRequest failed",
+		zap.String("from", nodeID.String()),
+		zap.Uint32("requestID", requestID),
+		zap.Error(appErr),
+	)
+
+	return vm.Network.AppRequestFailed(ctx, nodeID, requestID, appErr)
 }
 
 // CrossChainAppRequest implements the block.ChainVM interface
@@ -395,6 +437,41 @@ func (vm *VM) Connected(context.Context, ids.NodeID, *version.Application) error
 // Disconnected implements the block.ChainVM interface
 func (vm *VM) Disconnected(context.Context, ids.NodeID) error {
 	return nil
+}
+
+// loggingACP118Handler wraps the ACP-118 handler to add request logging
+type loggingACP118Handler struct {
+	*acp118.Handler
+	log logging.Logger
+}
+
+func (h *loggingACP118Handler) AppRequest(
+	ctx context.Context,
+	nodeID ids.NodeID,
+	deadline time.Time,
+	requestBytes []byte,
+) ([]byte, *common.AppError) {
+	h.log.Info("⚡ ACP-118 AppRequest received",
+		zap.String("from", nodeID.String()),
+		zap.Int("requestSize", len(requestBytes)),
+		zap.Time("deadline", deadline),
+	)
+
+	response, err := h.Handler.AppRequest(ctx, nodeID, deadline, requestBytes)
+
+	if err != nil {
+		h.log.Error("❌ ACP-118 request failed",
+			zap.String("from", nodeID.String()),
+			zap.Error(err),
+		)
+	} else {
+		h.log.Info("✓ ACP-118 signature response sent",
+			zap.String("to", nodeID.String()),
+			zap.Int("responseSize", len(response)),
+		)
+	}
+
+	return response, err
 }
 
 // NewHTTPHandler implements the block.ChainVM interface for Connect RPC
