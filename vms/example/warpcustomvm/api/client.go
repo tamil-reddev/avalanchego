@@ -56,7 +56,9 @@ type GetChainIDReply struct {
 
 // SubmitMessageArgs is the args for submitting a new Warp message
 type SubmitMessageArgs struct {
-	Payload []byte `json:"payload"` // Actual message payload (can contain destination info)
+	DestinationChain   string `json:"destinationChain"`   // Destination blockchain ID (hex string with 0x prefix or cb58)
+	DestinationAddress string `json:"destinationAddress"` // Destination contract address (hex string with 0x prefix)
+	Message            string `json:"message"`            // Message payload (string)
 }
 
 // SubmitMessageReply is the response from submitting a message
@@ -145,7 +147,9 @@ func (c *Client) GetChainID(
 // Note: The source address is automatically set to the Teleporter precompile address on the server
 func (c *Client) SubmitMessage(
 	ctx context.Context,
-	payload []byte,
+	destinationChain string,
+	destinationAddress string,
+	message string,
 	options ...rpc.Option,
 ) (ids.ID, error) {
 	resp := new(SubmitMessageReply)
@@ -153,7 +157,9 @@ func (c *Client) SubmitMessage(
 		ctx,
 		"warpcustomvm.submitMessage",
 		&SubmitMessageArgs{
-			Payload: payload,
+			DestinationChain:   destinationChain,
+			DestinationAddress: destinationAddress,
+			Message:            message,
 		},
 		resp,
 		options...,

@@ -7,7 +7,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/database"
@@ -43,12 +45,15 @@ func NewServer(
 	builder builder.Builder,
 	acceptedState database.Database,
 ) Server {
-	return &server{
+	s := &server{
 		ctx:           ctx,
 		chain:         chain,
 		builder:       builder,
 		acceptedState: acceptedState,
 	}
+	// Initialize counter to 7 so next message ID will be 8
+	s.nextTeleporterMsgID.Store(7)
+	return s
 }
 
 // NewEthCompatServer creates an EVM-compatible JSON-RPC server
@@ -57,10 +62,11 @@ func NewEthCompatServer(ctx *snow.Context) EthCompatServer {
 }
 
 type server struct {
-	ctx           *snow.Context
-	chain         chain.Chain
-	builder       builder.Builder
-	acceptedState database.Database
+	ctx                 *snow.Context
+	chain               chain.Chain
+	builder             builder.Builder
+	acceptedState       database.Database
+	nextTeleporterMsgID atomic.Uint64
 }
 
 type ethCompatServer struct {
@@ -93,70 +99,150 @@ func (e *ethCompatServer) Chainid(_ *http.Request, _ *struct{}, reply *string) e
 
 // SubmitMessage handles the warpcustomvm.submitMessage JSON-RPC method
 func (s *server) SubmitMessage(_ *http.Request, args *SubmitMessageArgs, reply *SubmitMessageReply) error {
-	// Hardcoded destination for testing - C-Chain (Fuji testnet)
-	destinationChainID := ids.ID{}
-	// This is the C-Chain ID on Fuji: yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp
-	destID, err := ids.FromString("yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp")
-	if err == nil {
-		destinationChainID = destID
-	}
-
-	s.ctx.Log.Info("Creating Teleporter message with hardcoded values",
-		zap.String("destinationChain", destinationChainID.String()),
-		zap.Int("payloadSize", len(args.Payload)),
+	s.ctx.Log.Info("📥 [API Server] Step 1: Received submitMessage request",
+		zap.String("destinationChain", args.DestinationChain),
+		zap.String("destinationAddress", args.DestinationAddress),
+		zap.String("message", args.Message),
 	)
 
-	// Try the proper Teleporter message format
-	encodedPayload, err := teleporter.CreateProperTeleporterMessage(destinationChainID, args.Payload)
+	// Parse destination chain ID from request (supports both hex and cb58 formats)
+	var destinationChainID ids.ID
+	var err error
+
+	s.ctx.Log.Info("📥 [API Server] Step 2: Parsing destination chain ID")
+	// Try parsing as hex first (with or without 0x prefix)
+	destChainStr := args.DestinationChain
+	if len(destChainStr) > 2 && destChainStr[:2] == "0x" {
+		// Hex format with 0x prefix - strip 0x and decode
+		s.ctx.Log.Info("   Detected hex format (0x prefix)")
+		hexStr := destChainStr[2:]
+		if len(hexStr) == 64 { // 32 bytes = 64 hex chars
+			for i := 0; i < 32; i++ {
+				var b byte
+				_, err := fmt.Sscanf(hexStr[i*2:i*2+2], "%02x", &b)
+				if err != nil {
+					s.ctx.Log.Error("   ❌ Invalid hex character", zap.Error(err))
+					return fmt.Errorf("invalid hex in destination chain ID: %w", err)
+				}
+				destinationChainID[i] = b
+			}
+			s.ctx.Log.Info("   ✓ Parsed hex to chain ID", zap.String("chainID", destinationChainID.String()))
+		} else {
+			s.ctx.Log.Error("   ❌ Invalid hex length", zap.Int("got", len(hexStr)), zap.Int("expected", 64))
+			return fmt.Errorf("invalid destination chain ID hex length: expected 64 hex chars, got %d", len(hexStr))
+		}
+	} else {
+		// Try CB58 format (e.g., yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp)
+		s.ctx.Log.Info("   Detected CB58 format")
+		destinationChainID, err = ids.FromString(destChainStr)
+		if err != nil {
+			s.ctx.Log.Error("   ❌ Failed to parse CB58", zap.Error(err))
+			return fmt.Errorf("invalid destination chain ID: %w", err)
+		}
+		s.ctx.Log.Info("   ✓ Parsed CB58 to chain ID", zap.String("chainID", destinationChainID.String()))
+	}
+
+	// ABI-encode the message as string (your contract expects abi.decode(message, (string)))
+	s.ctx.Log.Info("📥 [API Server] Step 3: ABI-encoding message as string")
+	stringType, _ := abi.NewType("string", "", nil)
+	abiArgs := abi.Arguments{{Type: stringType}}
+	userMessage, err := abiArgs.Pack(args.Message)
 	if err != nil {
-		s.ctx.Log.Error("Failed to create proper teleporter message, trying minimal format", zap.Error(err))
+		s.ctx.Log.Error("❌ Failed to ABI-encode message", zap.Error(err))
+		return fmt.Errorf("failed to encode message as string: %w", err)
+	}
+	s.ctx.Log.Info("   ✓ Message ABI-encoded",
+		zap.Int("originalLength", len(args.Message)),
+		zap.Int("encodedLength", len(userMessage)),
+		zap.String("encodedHex", fmt.Sprintf("0x%x", userMessage)),
+	)
+
+	// Try the proper Teleporter message format with destination address from request
+	// Increment and get the next Teleporter message ID
+	teleporterMsgID := s.nextTeleporterMsgID.Add(1)
+	s.ctx.Log.Info("📥 [API Server] Step 4: Encoding Teleporter message",
+		zap.Uint64("teleporterMessageID", teleporterMsgID),
+	)
+	encodedPayload, err := teleporter.CreateProperTeleporterMessageWithAddress(
+		teleporterMsgID,
+		destinationChainID,
+		args.DestinationAddress,
+		userMessage,
+	)
+	if err != nil {
+		s.ctx.Log.Error("❌ Failed to create proper teleporter message, trying minimal format", zap.Error(err))
 
 		// Fallback to minimal format
-		encodedPayload, err = teleporter.CreateMinimalTeleporterPayload(destinationChainID, args.Payload)
+		encodedPayload, err = teleporter.CreateMinimalTeleporterPayload(destinationChainID, userMessage)
 		if err != nil {
+			s.ctx.Log.Error("❌ Failed to encode with minimal format too", zap.Error(err))
 			return fmt.Errorf("failed to encode Teleporter message: %w", err)
 		}
 	}
 
-	s.ctx.Log.Info("Teleporter message encoded successfully",
+	s.ctx.Log.Info("📥 [API Server] Step 5: ✓ Teleporter payload encoded",
 		zap.Int("encodedSize", len(encodedPayload)),
-		zap.String("encodedHex", fmt.Sprintf("0x%x", encodedPayload[:min(64, len(encodedPayload))])),
+		zap.String("first64Bytes", fmt.Sprintf("0x%x", encodedPayload[:min(64, len(encodedPayload))])),
 	)
 
-	// Always use the Teleporter precompile address as the source address
+	// ICM relayer expects: Warp → AddressedCall → Teleporter Message
+	// The AddressedCall wraps the Teleporter message with a source address
 	sourceAddress := TeleporterPrecompileAddress
+	s.ctx.Log.Info("📥 [API Server] Step 6: Creating AddressedCall wrapper",
+		zap.String("sourceAddress", fmt.Sprintf("0x%x", sourceAddress)),
+		zap.Int("teleporterPayloadSize", len(encodedPayload)),
+	)
 
-	// Create AddressedCall with source address and Teleporter-encoded payload
+	// Wrap Teleporter message in AddressedCall
 	addressedCall, err := payload.NewAddressedCall(
 		sourceAddress,
-		encodedPayload,
+		encodedPayload, // This is the Teleporter message
 	)
 	if err != nil {
+		s.ctx.Log.Error("❌ Failed to create addressed call", zap.Error(err))
 		return fmt.Errorf("failed to create addressed call: %w", err)
 	}
+	s.ctx.Log.Info("   ✓ AddressedCall created", zap.Int("size", len(addressedCall.Bytes())))
 
-	// Create unsigned Warp message
+	// Create unsigned Warp message with AddressedCall payload
+	s.ctx.Log.Info("📥 [API Server] Step 7: Creating unsigned Warp message",
+		zap.Uint32("networkID", s.ctx.NetworkID),
+		zap.String("sourceChainID", s.ctx.ChainID.String()),
+	)
 	unsignedMsg, err := warpmsg.NewUnsignedMessage(
 		s.ctx.NetworkID,
 		s.ctx.ChainID,
-		addressedCall.Bytes(),
+		addressedCall.Bytes(), // AddressedCall wraps the Teleporter message
 	)
 	if err != nil {
+		s.ctx.Log.Error("❌ Failed to create warp message", zap.Error(err))
 		return fmt.Errorf("failed to create warp message: %w", err)
 	}
+	s.ctx.Log.Info("   ✓ Unsigned Warp message created",
+		zap.Int("totalSize", len(unsignedMsg.Bytes())),
+	)
 
 	// Compute message ID from the unsigned message bytes
 	messageIDHash := hashing.ComputeHash256Array(unsignedMsg.Bytes())
 	messageID := ids.ID(messageIDHash)
+	s.ctx.Log.Info("📥 [API Server] Step 8: Computed message ID",
+		zap.String("messageID", messageID.String()),
+		zap.String("messageIDHex", fmt.Sprintf("0x%x", messageID[:])),
+	)
 
 	// Add to pending messages (builder will store it)
+	s.ctx.Log.Info("📥 [API Server] Step 9: Adding message to builder")
 	if err := s.builder.AddMessage(context.Background(), messageID, unsignedMsg); err != nil {
+		s.ctx.Log.Error("❌ Failed to add message to builder", zap.Error(err))
 		return err
 	}
+	s.ctx.Log.Info("   ✓ Message added to builder successfully")
 
-	s.ctx.Log.Info("Warp message submitted via JSON-RPC",
-		zap.Stringer("messageID", messageID),
-		zap.Int("payloadSize", len(args.Payload)),
+	s.ctx.Log.Info("📥 [API Server] ✅ Step 10: Teleporter message submitted successfully!",
+		zap.String("messageID", messageID.String()),
+		zap.String("destinationChain", destinationChainID.String()),
+		zap.String("destinationAddress", args.DestinationAddress),
+		zap.String("userMessage", args.Message),
 	)
 
 	reply.MessageID = messageID
@@ -171,7 +257,7 @@ func (s *server) GetMessage(_ *http.Request, args *GetMessageArgs, reply *GetMes
 		return err
 	}
 
-	// Parse the addressed call
+	// Parse the AddressedCall to get the Teleporter message inside
 	addressedCall, err := payload.ParseAddressedCall(unsignedMsg.Payload)
 	if err != nil {
 		return fmt.Errorf("failed to parse addressed call: %w", err)
@@ -181,7 +267,7 @@ func (s *server) GetMessage(_ *http.Request, args *GetMessageArgs, reply *GetMes
 	reply.NetworkID = unsignedMsg.NetworkID
 	reply.SourceChainID = unsignedMsg.SourceChainID
 	reply.SourceAddress = addressedCall.SourceAddress
-	reply.Payload = addressedCall.Payload
+	reply.Payload = addressedCall.Payload // This is the Teleporter message
 	reply.UnsignedMessageBytes = unsignedMsg.Bytes()
 
 	return nil
@@ -212,7 +298,7 @@ func (s *server) GetLatestBlock(_ *http.Request, _ *struct{}, reply *GetBlockRep
 			continue
 		}
 
-		// Parse addressed call
+		// Parse the AddressedCall to get the Teleporter message inside
 		addressedCall, err := payload.ParseAddressedCall(unsignedMsg.Payload)
 		if err != nil {
 			s.ctx.Log.Warn("failed to parse addressed call",
@@ -227,7 +313,7 @@ func (s *server) GetLatestBlock(_ *http.Request, _ *struct{}, reply *GetBlockRep
 			NetworkID:            unsignedMsg.NetworkID,
 			SourceChainID:        unsignedMsg.SourceChainID,
 			SourceAddress:        addressedCall.SourceAddress,
-			Payload:              addressedCall.Payload,
+			Payload:              addressedCall.Payload, // Teleporter message
 			UnsignedMessageBytes: unsignedMsg.Bytes(),
 			Metadata: MessageMetadata{
 				Timestamp:   blockHeader.Timestamp,
@@ -271,7 +357,7 @@ func (s *server) GetBlock(_ *http.Request, args *GetBlockArgs, reply *GetBlockRe
 			continue
 		}
 
-		// Parse addressed call
+		// Parse the AddressedCall to get the Teleporter message inside
 		addressedCall, err := payload.ParseAddressedCall(unsignedMsg.Payload)
 		if err != nil {
 			s.ctx.Log.Warn("failed to parse addressed call",
@@ -286,7 +372,7 @@ func (s *server) GetBlock(_ *http.Request, args *GetBlockArgs, reply *GetBlockRe
 			NetworkID:            unsignedMsg.NetworkID,
 			SourceChainID:        unsignedMsg.SourceChainID,
 			SourceAddress:        addressedCall.SourceAddress,
-			Payload:              addressedCall.Payload,
+			Payload:              addressedCall.Payload, // Teleporter message
 			UnsignedMessageBytes: unsignedMsg.Bytes(),
 			Metadata: MessageMetadata{
 				Timestamp:   blockHeader.Timestamp,
