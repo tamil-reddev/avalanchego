@@ -28,13 +28,12 @@ LOCAL_PLUGIN_PATH="${PWD}/build/plugins"
 GLOBAL_PLUGIN_PATH="${HOME}/.avalanchego/plugins"
 
 echo ""
-echo "Setting up plugin symlinks..."
+echo "Copying plugin to plugin directories..."
 for plugin_dir in "${GLOBAL_PLUGIN_PATH}" "${LOCAL_PLUGIN_PATH}"; do
   PLUGIN_PATH="${plugin_dir}/${VM_ID}"
-  echo "Symlinking ./build/warpcustomvm to ${PLUGIN_PATH}"
+  echo "Copying ./build/warpcustomvm to ${PLUGIN_PATH}"
   mkdir -p "${plugin_dir}"
-  rm -f "${PLUGIN_PATH}" # Remove existing symlink if any
-  ln -sf "${PWD}/build/warpcustomvm" "${PLUGIN_PATH}"
+  cp -f "${PWD}/build/warpcustomvm" "${PLUGIN_PATH}"
 done
 
 echo ""
