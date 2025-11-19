@@ -241,7 +241,6 @@ The ICM relayer queries the VM's JSON-RPC API to detect new Warp messages (no ev
     {
       "subnetID": "2U4eQ6cBdihtYCqSxaGfkJ65f6g4ScNEW5gjgHCDAqvSTMeWND",
       "blockchainID": "2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ",
-      "vm": "srEXiWaHuhNyGwPUi444Tu47ZEDwxTWrbQiuD7FmgSAQ6X7Dy",
       "rpc-endpoint": "http://127.0.0.1:9650/ext/bc/2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ/rpc",
       "ws-endpoint": "ws://127.0.0.1:9650/ext/bc/2EcxPo6BHr9xPcHrjLSgHLzzMtPVuKaKzWvSPDGJQgLkFxUzRQ/ws",
       "message-contracts": {
