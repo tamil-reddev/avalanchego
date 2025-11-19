@@ -154,15 +154,25 @@ func (s *server) SubmitMessage(_ *http.Request, args *SubmitMessageArgs, reply *
 		zap.String("encodedHex", fmt.Sprintf("0x%x", userMessage)),
 	)
 
-	// Try the proper Teleporter message format with destination address from request
-	// Allocate a message ID with mutex protection to ensure thread-safety
-	s.ctx.Log.Info("📥 [API Server] Step 4: Allocating Teleporter message ID")
-	teleporterMsgID, err := s.getNextTeleporterMessageID()
+	// Allocate message ID from consensus state counter
+	// Race condition note: Multiple nodes CAN allocate the same ID if they submit simultaneously
+	// However, only ONE block will be built and accepted, and that block's counter increment wins
+	// The other node's duplicate message will either:
+	//   1) Not be included if block building happens after acceptance (correct counter used)
+	//   2) Be included with duplicate ID but rejected by destination chain (Teleporter handles this)
+	s.ctx.Log.Info("📥 [API Server] Step 4: Allocating Teleporter ID from consensus counter")
+	s.msgIDMutex.Lock()
+	lastMessageID, err := state.GetLastMessageID(s.acceptedState)
 	if err != nil {
-		return fmt.Errorf("failed to allocate message ID: %w", err)
+		s.msgIDMutex.Unlock()
+		return fmt.Errorf("failed to get last message ID: %w", err)
 	}
-	s.ctx.Log.Info("   ✓ Message ID allocated",
+	teleporterMsgID := lastMessageID + 1
+	s.msgIDMutex.Unlock()
+
+	s.ctx.Log.Info("   ✓ Teleporter ID allocated from consensus state",
 		zap.Uint64("teleporterMessageID", teleporterMsgID),
+		zap.Uint64("lastCommittedID", lastMessageID),
 	)
 
 	s.ctx.Log.Info("📥 [API Server] Step 5: Encoding Teleporter message")

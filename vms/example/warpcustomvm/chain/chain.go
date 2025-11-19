@@ -305,6 +305,26 @@ func (b *blockWrapper) Accept(ctx context.Context) error {
 		return err
 	}
 
+	// Increment the global message ID counter for each message in this block
+	// This ensures all validators maintain the same counter through consensus
+	if len(b.Block.Messages) > 0 {
+		lastMessageID, err := state.GetLastMessageID(b.chain.acceptedState)
+		if err != nil {
+			b.chain.chainContext.Log.Warn("failed to get last message ID during accept", zap.Error(err))
+		} else {
+			newMessageID := lastMessageID + uint64(len(b.Block.Messages))
+			if err := state.SetLastMessageID(b.chain.acceptedState, newMessageID); err != nil {
+				b.chain.chainContext.Log.Error("failed to update message ID counter", zap.Error(err))
+			} else {
+				b.chain.chainContext.Log.Info("✓ updated global message ID counter",
+					zap.Uint64("from", lastMessageID),
+					zap.Uint64("to", newMessageID),
+					zap.Int("messagesInBlock", len(b.Block.Messages)),
+				)
+			}
+		}
+	}
+
 	// Update children to point to base state
 	for childID := range b.verifiedChildrenIDs {
 		child, exists := b.chain.verifiedBlocks[childID]
