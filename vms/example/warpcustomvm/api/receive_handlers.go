@@ -124,12 +124,6 @@ func (s *server) ReceiveWarpMessage(_ *http.Request, args *ReceiveWarpMessageArg
 		UnsignedMessage: unsignedMsg.Bytes(),
 	}
 
-	// Store the received message in state
-	if err := state.SetReceivedMessage(s.acceptedState, receivedMsg); err != nil {
-		s.ctx.Log.Error("❌ Failed to store received message", zap.Error(err))
-		return fmt.Errorf("failed to store received message: %w", err)
-	}
-
 	// Add the received message to the builder so it gets included in a block
 	// This ensures the message propagates to all validator nodes through consensus
 	s.ctx.Log.Info("📦 Adding received message to block builder for consensus")
