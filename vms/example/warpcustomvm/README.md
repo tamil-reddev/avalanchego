@@ -709,8 +709,3 @@ docker start avago1 avago2
 - [Avalanche Interchain Messaging (ICM)](https://github.com/ava-labs/teleporter)
 - [XSVM Example](https://github.com/ava-labs/avalanchego/tree/master/vms/example/xsvm)
 - [Snowman Consensus](https://docs.avax.network/learn/avalanche/avalanche-consensus)
-
-## License
-
-Copyright (C) 2019-2025, Ava Labs, Inc. All rights reserved.
-See the file LICENSE for licensing terms.
