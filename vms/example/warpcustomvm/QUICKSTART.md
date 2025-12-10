@@ -53,7 +53,7 @@ WarpCustomVM is a **custom Avalanche blockchain** that can **send and receive me
 4. **Validators agree**: Consensus accepts the block
 5. **Validators sign**: Each validator signs the message
 6. **Relayer delivers**: ICM relayer sends to C-Chain
-7. **Done!** ✓
+7. **Done!** 
 
 **Time**: ~5-10 seconds total
 
@@ -65,7 +65,7 @@ WarpCustomVM is a **custom Avalanche blockchain** that can **send and receive me
 4. **Relayer delivers**: Calls `receiveWarpMessage` API
 5. **VM creates block**: Message included in new block
 6. **All validators store**: Every node saves the message
-7. **Done!** ✓ Message queryable on all nodes
+7. **Done!**  Message queryable on all nodes
 
 **Time**: ~5-10 seconds total
 
@@ -393,11 +393,11 @@ func (c *chain) Accept(ctx context.Context, b *xblock.Block) error {
 
 ## Key Takeaways
 
-✅ **Simple**: 5 core APIs, plain text payloads
-✅ **Secure**: BLS signatures, consensus-based storage
-✅ **Automatic**: ICM relayer handles delivery
-✅ **Synced**: All validators have identical state
-✅ **Fast**: ~5-10 seconds cross-chain
+ **Simple**: 5 core APIs, plain text payloads
+ **Secure**: BLS signatures, consensus-based storage
+ **Automatic**: ICM relayer handles delivery
+ **Synced**: All validators have identical state
+ **Fast**: ~5-10 seconds cross-chain
 
 ## Support
 
@@ -407,4 +407,4 @@ func (c *chain) Accept(ctx context.Context, b *xblock.Block) error {
 
 ---
 
-**Ready to build?** Start with `submitMessage` and see your first cross-chain message! 🚀
+**Ready to build?** Start with `submitMessage` and see your first cross-chain message! 

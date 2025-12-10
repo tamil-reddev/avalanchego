@@ -136,7 +136,7 @@ sequenceDiagram
     Relayer->>Relayer: Aggregate signatures
     Relayer->>CChain: Send signed message
     
-    CChain-->>CChain: ✓ Message received!
+    CChain-->>CChain:  Message received!
 ```
 
 ---
@@ -191,7 +191,7 @@ sequenceDiagram
     
     Note over State: All validators now have<br/>identical message state
     
-    State->>State: ✓ Message synced across all nodes
+    State->>State:  Message synced across all nodes
 ```
 
 ---
@@ -233,7 +233,7 @@ graph TD
     end
 
     subgraph "Result"
-        SYNC[✓ All nodes have<br/>identical message state]
+        SYNC[ All nodes have<br/>identical message state]
     end
 
     MSG --> API
@@ -577,7 +577,7 @@ flowchart TD
     ERR_CONSENSUS[Error: Consensus failed]
     ERR_STORE[Error: Database error]
     
-    SUCCESS[✓ Success]
+    SUCCESS[ Success]
     
     START --> VALIDATE
     VALIDATE -->|No| ERR_INVALID

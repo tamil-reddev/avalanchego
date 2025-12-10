@@ -3,7 +3,7 @@
 
 ---
 
-## 🎯 Title Slide
+##  Title Slide
 
 <div style="text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 100px 50px; border-radius: 20px;">
 
@@ -18,17 +18,17 @@
 
 ---
 
-## 🤔 The Problem - Isolated Islands
+##  The Problem - Isolated Islands
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px;">
 
 ### **Imagine This Scenario:**
 
 ```
-🏝️ Island A              🏝️ Island B              🏝️ Island C
+ Island A               Island B               Island C
 (Your Bank)            (Shopping Mall)          (Government)
 
-   💰                        🛍️                       📄
+                                                  
   
 They can't communicate with each other!
 ```
@@ -40,40 +40,40 @@ They can't communicate with each other!
 - **No easy way** to share information between them
 - **Users must manually** bridge between chains
 
-**Result:** Inefficient, slow, and complicated! 😓
+**Result:** Inefficient, slow, and complicated! 
 
 </div>
 
 ---
 
-## 💡 The Solution - WarpCustomVM
+##  The Solution - WarpCustomVM
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px;">
 
 ### **WarpCustomVM = The Universal Translator**
 
-Think of it as a **post office for blockchains** 📮
+Think of it as a **post office for blockchains** 
 
 ```
-🏝️ Island A  ←→  📮 Post Office  ←→  🏝️ Island B
-   💰         (WarpCustomVM)         🛍️
+ Island A  ←→   Post Office  ←→   Island B
+            (WarpCustomVM)         
 ```
 
 ### **What It Does:**
 
-✅ **Sends messages** from one blockchain to another  
-✅ **Receives messages** from other blockchains  
-✅ **Automatically delivers** messages (no manual work!)  
-✅ **Keeps everyone synchronized** (all copies are identical)
+ **Sends messages** from one blockchain to another  
+ **Receives messages** from other blockchains  
+ **Automatically delivers** messages (no manual work!)  
+ **Keeps everyone synchronized** (all copies are identical)
 
-### **The Magic:** Messages travel automatically and securely! ✨
+### **The Magic:** Messages travel automatically and securely! 
 
 </div>
 
 ---
 
 
-## 🛒 Real World Example - E-Commerce
+##  Real World Example - E-Commerce
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px;">
 
@@ -103,10 +103,10 @@ Step 5: All blockchains updated automatically
 
 ### **Result:**
 
-✅ **Instant coordination** across 3 different systems  
-✅ **Automatic discount** applied  
-✅ **Points deducted** immediately  
-✅ **Order confirmed** in seconds
+ **Instant coordination** across 3 different systems  
+ **Automatic discount** applied  
+ **Points deducted** immediately  
+ **Order confirmed** in seconds
 
 **Total Time: 10 seconds instead of hours!**
 
@@ -114,28 +114,28 @@ Step 5: All blockchains updated automatically
 
 ---
 
-## 🎨 The Technology - Simplified
+##  The Technology - Simplified
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px;">
 
 ### **The Magic Behind the Scenes:**
 
-#### **1. Creating the Message** 📝
+#### **1. Creating the Message** 
 - Like writing a letter with an address and message
 
-#### **2. Getting Signatures** ✍️
+#### **2. Getting Signatures** 
 - Multiple trusted parties (validators) sign it
 - Like getting notarized documents
 
-#### **3. Automatic Delivery** 🚚
+#### **3. Automatic Delivery** 
 - Special delivery service (ICM Relayer) carries it
 - Like FedEx but instant!
 
-#### **4. Verification** ✅
+#### **4. Verification** 
 - Receiving blockchain checks signatures
 - Like checking ID at the door
 
-#### **5. Storage** 💾
+#### **5. Storage** 
 - Message stored on all computers
 - Like sending copies to everyone simultaneously
 
@@ -143,13 +143,13 @@ Step 5: All blockchains updated automatically
 
 Every computer has the same information at the same time!
 
-**No confusion. No conflicts. No problems!** 🎉
+**No confusion. No conflicts. No problems!** 
 
 </div>
 
 ---
 
-## ❓Common Questions
+## Common Questions
 
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 20px;">
 

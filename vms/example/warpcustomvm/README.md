@@ -4,12 +4,12 @@ A custom Avalanche VM implementing **bidirectional** Avalanche Warp Messaging (A
 
 ## Features
 
-- ✅ **Send messages** from warpcustomvm to C-Chain (or any other chain)
-- ✅ **Receive messages** from C-Chain (or any other chain) to warpcustomvm
-- ✅ Full Teleporter protocol support
-- ✅ ACP-118 Warp signature aggregation
-- ✅ ICM relayer compatibility
-- ✅ Consensus-based message propagation
+-  **Send messages** from warpcustomvm to C-Chain (or any other chain)
+-  **Receive messages** from C-Chain (or any other chain) to warpcustomvm
+-  Full Teleporter protocol support
+-  ACP-118 Warp signature aggregation
+-  ICM relayer compatibility
+-  Consensus-based message propagation
 
 ## Quick Start
 
@@ -55,7 +55,7 @@ curl -X POST http://localhost:9650/ext/bc/YOUR_BLOCKCHAIN_ID/rpc \
   }'
 ```
 
-📖 **For detailed instructions:**
+ **For detailed instructions:**
 - [ICM_RELAYER_INTEGRATION.md](./ICM_RELAYER_INTEGRATION.md) - **How ICM relayer works with warpcustomvm**
 - [ICM_RELAYER_CONFIG.md](./ICM_RELAYER_CONFIG.md) - Complete relayer setup & configuration
 - [RECEIVING_MESSAGES.md](./RECEIVING_MESSAGES.md) - Detailed receiving guide
@@ -591,18 +591,18 @@ This VM implements the **Snowman consensus protocol** with block-embedded messag
 
 ## Key Features
 
-- ✅ **Snowman Consensus**: Full implementation of Avalanche consensus protocol with threshold voting
-- ✅ **Avalanche Warp Messaging (AWM)**: Three-layer structure (Warp → AddressedCall → Teleporter)
-- ✅ **ACP-118 P2P Signature Handler**: Aggregate signature collection for Warp messages
-- ✅ **Block-Embedded Message Propagation**: Messages propagate through consensus (not gossip)
-- ✅ **Consensus-Based Message ID**: Global counter synchronized across all validators
-- ✅ **ICM Relayer Compatible**: Standard Warp message format for cross-chain delivery
-- ✅ **JSON-RPC 2.0 API**: HTTP endpoints for message submission and querying
-- ✅ **State Persistence**: Database-backed storage for messages, blocks, and counters
-- ✅ **Height Indexing**: Query blocks by height with full message data
-- ✅ **Backward Compatibility**: Handles old blocks without WarpMessages field
-- ✅ **Race-Condition Aware**: Proper mutex protection and atomic counter updates
-- ✅ **Multi-Validator Support**: Tested with 2-validator setup (weights: 102 + 48 = 150)
+-  **Snowman Consensus**: Full implementation of Avalanche consensus protocol with threshold voting
+-  **Avalanche Warp Messaging (AWM)**: Three-layer structure (Warp → AddressedCall → Teleporter)
+-  **ACP-118 P2P Signature Handler**: Aggregate signature collection for Warp messages
+-  **Block-Embedded Message Propagation**: Messages propagate through consensus (not gossip)
+-  **Consensus-Based Message ID**: Global counter synchronized across all validators
+-  **ICM Relayer Compatible**: Standard Warp message format for cross-chain delivery
+-  **JSON-RPC 2.0 API**: HTTP endpoints for message submission and querying
+-  **State Persistence**: Database-backed storage for messages, blocks, and counters
+-  **Height Indexing**: Query blocks by height with full message data
+-  **Backward Compatibility**: Handles old blocks without WarpMessages field
+-  **Race-Condition Aware**: Proper mutex protection and atomic counter updates
+-  **Multi-Validator Support**: Tested with 2-validator setup (weights: 102 + 48 = 150)
 
 ## Client SDK Usage
 
@@ -658,10 +658,10 @@ docker start avago1 avago2
 ```
 
 ### Messages not included in blocks
-- Check logs for `📥 [API Server]` steps - verify message submission flow
-- Look for `✅ WaitForEvent returning PendingTxs` - confirms engine is polling
-- Check `🔨 BuildBlock called` - verifies block building triggered
-- Verify `🔨 built block` with message count - confirms messages embedded
+- Check logs for ` [API Server]` steps - verify message submission flow
+- Look for ` WaitForEvent returning PendingTxs` - confirms engine is polling
+- Check ` BuildBlock called` - verifies block building triggered
+- Verify ` built block` with message count - confirms messages embedded
 - Check pending message queue: `added Warp message to pending pool`
 
 ### Messages not syncing between validators
@@ -671,7 +671,7 @@ docker start avago1 avago2
 - Check validator logs for consensus messages (Verify/Accept)
 - Verify both validators are connected via P2P
 - Ensure total stake >= threshold (e.g., 150 >= 76 for >50%)
-- Check logs for `✓ stored warp message from accepted block` on all validators
+- Check logs for ` stored warp message from accepted block` on all validators
 - Verify `ParseBlock` logs show correct `warpMessages` count
 
 ### Duplicate Teleporter Message IDs
@@ -681,7 +681,7 @@ docker start avago1 avago2
 - Submit messages to **only one node** (primary validator)
 - Or accept that Teleporter protocol handles duplicates gracefully
 - Counter synchronizes across validators after block acceptance
-- Check logs for `✓ updated global message ID counter`
+- Check logs for ` updated global message ID counter`
 
 ### ICM Relayer not picking up messages
 **Cause:** Warp message format or signature aggregation issue

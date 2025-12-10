@@ -22,11 +22,11 @@
 - **Plain text payloads** with no complex encoding (simplified architecture)
 
 ### Key Features
-- ✅ Simple, readable code (no encryption, no complex encoding)
-- ✅ Full Snowman consensus integration
-- ✅ ACP-118 Warp signature aggregation
-- ✅ Automatic cross-chain message delivery via ICM Relayer
-- ✅ All validators sync received messages through block consensus
+-  Simple, readable code (no encryption, no complex encoding)
+-  Full Snowman consensus integration
+-  ACP-118 Warp signature aggregation
+-  Automatic cross-chain message delivery via ICM Relayer
+-  All validators sync received messages through block consensus
 
 ---
 

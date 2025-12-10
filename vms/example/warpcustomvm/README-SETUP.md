@@ -472,11 +472,11 @@ Enable debug logging by setting chain config:
 ```
 
 **Key log entries to monitor:**
-- `📥 [API Server] Step X` - Message submission flow
-- `🔨 BuildBlock called` - Block building triggered
-- `✅ WaitForEvent returning PendingTxs` - Consensus engine activated
-- `✓ stored warp message from accepted block` - Message accepted
-- `✓ updated global message ID counter` - Counter synchronized
+- ` [API Server] Step X` - Message submission flow
+- ` BuildBlock called` - Block building triggered
+- ` WaitForEvent returning PendingTxs` - Consensus engine activated
+- ` stored warp message from accepted block` - Message accepted
+- ` updated global message ID counter` - Counter synchronized
 
 ---
 
