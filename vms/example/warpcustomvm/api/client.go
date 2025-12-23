@@ -12,12 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/rpc"
 )
 
-// WarpPrecompileAddress is the low-level Warp messenger precompile
-var WarpPrecompileAddress = []byte{
-	0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
-}
-
 // TeleporterContractAddress is the deployed Teleporter contract address
 // This is the address that the ICM relayer expects for Teleporter protocol messages
 // Address: 0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf

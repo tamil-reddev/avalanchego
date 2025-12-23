@@ -420,12 +420,18 @@ docker run -it -d\
     -e AVAGO_VM_ALIASES_FILE_CONTENT=<content> \
     avaplatform/avalanchego:v1.14.0```
 
-### 5. Create Subnet and Blockchain
+### 5. Place the vm binary to the plugins folder
+```bash
+cp ./build/warpcustomvm ./build/v3m4wPxaHpvGr8qfMeyK6PRW3idZrPHmYcMTt7oXdK47yurVH
+cp ./build/v3m4wPxaHpvGr8qfMeyK6PRW3idZrPHmYcMTt7oXdK47yurVH ~/.avalanchego/plugins/
+```
+
+### 6. Create Subnet and Blockchain
 
 Use the Avalanche CLI or API to:
 1. Create a subnet
 2. Create a blockchain with `warpcustomvm` as the VM
-3. Note the blockchain ID for API calls
+3. Deploy the blockchain to Fuji-C chain
 
 ## Testing the VM
 
