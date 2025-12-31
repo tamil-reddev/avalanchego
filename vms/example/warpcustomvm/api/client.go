@@ -1,0 +1,261 @@
+// Copyright (C) 2019-2025, Ava Labs, Inc. All rights reserved.
+// See the file LICENSE for licensing terms.
+
+package api
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/constants"
+	"github.com/ava-labs/avalanchego/utils/rpc"
+)
+
+// NewClient creates a new JSON-RPC client for warpcustomvm
+func NewClient(uri, chain string) *Client {
+	path := fmt.Sprintf(
+		"%s/ext/%s/%s",
+		uri,
+		constants.ChainAliasPrefix,
+		chain,
+	)
+	return &Client{
+		Req: rpc.NewEndpointRequester(path),
+	}
+}
+
+// Client provides JSON-RPC client for warpcustomvm API
+type Client struct {
+	Req rpc.EndpointRequester
+}
+
+// GetChainIDReply is the response for getting the blockchain ID
+type GetChainIDReply struct {
+	ChainID   ids.ID `json:"chainID"`
+	NetworkID uint32 `json:"networkID"`
+}
+
+// SubmitMessageArgs is the args for submitting a new Warp message
+type SubmitMessageArgs struct {
+	DestinationChain   string `json:"destinationChain"`   // Destination blockchain ID (hex string with 0x prefix or cb58)
+	DestinationAddress string `json:"destinationAddress"` // Destination contract address (hex string with 0x prefix)
+	Message            string `json:"message"`            // Message payload (string)
+}
+
+// SubmitMessageReply is the response from submitting a message
+type SubmitMessageReply struct {
+	MessageID ids.ID `json:"messageID"`
+}
+
+// GetMessageArgs is the args for getting a message
+type GetMessageArgs struct {
+	MessageID ids.ID `json:"messageID"`
+}
+
+// GetMessageReply is the response for getting a Warp message
+type GetMessageReply struct {
+	MessageID            ids.ID `json:"messageID"`            // TxID for relayer
+	NetworkID            uint32 `json:"networkID"`            // Network ID
+	SourceChainID        ids.ID `json:"sourceChainID"`        // Source blockchain ID
+	SourceAddress        []byte `json:"sourceAddress"`        // Address in source VM
+	Payload              []byte `json:"payload"`              // Message payload
+	UnsignedMessageBytes []byte `json:"unsignedMessageBytes"` // Full unsigned Warp message bytes
+}
+
+// GetBlockArgs is the args for getting a block
+type GetBlockArgs struct {
+	Height uint64 `json:"height,omitempty"`
+}
+
+// MessageMetadata contains contextual information about a message
+type MessageMetadata struct {
+	Timestamp   int64  `json:"timestamp"`
+	BlockNumber uint64 `json:"blockNumber"`
+	BlockHash   ids.ID `json:"blockHash"`
+}
+
+// MessageDetail contains full details of a Warp message in a block
+type MessageDetail struct {
+	MessageID            ids.ID          `json:"messageID"`            // TxID for relayer
+	NetworkID            uint32          `json:"networkID"`            // Network ID
+	SourceChainID        ids.ID          `json:"sourceChainID"`        // Source blockchain ID
+	SourceAddress        []byte          `json:"sourceAddress"`        // Address in source VM
+	Payload              []byte          `json:"payload"`              // Message payload
+	UnsignedMessageBytes []byte          `json:"unsignedMessageBytes"` // Full unsigned Warp message bytes
+	Metadata             MessageMetadata `json:"metadata"`             // Block metadata
+}
+
+// GetBlockReply is the response for getting a block
+type GetBlockReply struct {
+	BlockID   ids.ID          `json:"blockID"`
+	ParentID  ids.ID          `json:"parentID"`
+	Height    uint64          `json:"height"`
+	Timestamp int64           `json:"timestamp"`
+	Messages  []MessageDetail `json:"messages"`
+}
+
+// GetWarpMessageArgs is the args for getting an unsigned Warp message
+type GetWarpMessageArgs struct {
+	MessageID ids.ID `json:"messageID"`
+}
+
+// GetWarpMessageReply is the response for getting an unsigned Warp message
+type GetWarpMessageReply struct {
+	MessageID        ids.ID `json:"messageID"`
+	UnsignedMessage  string `json:"unsignedMessage"` // Hex-encoded
+	SourceChainID    ids.ID `json:"sourceChainID"`
+	DestinationChain ids.ID `json:"destinationChain"`
+	DestinationAddr  string `json:"destinationAddress"`
+}
+
+// ReceiveWarpMessageArgs is the args for receiving a Warp message from another chain
+type ReceiveWarpMessageArgs struct {
+	SignedMessage    []byte `json:"signedMessage"`    // Raw bytes from ICM relayer
+	SignedMessageHex string `json:"signedMessageHex"` // Hex-encoded (for manual calls)
+}
+
+// ReceiveWarpMessageReply is the response from receiving a Warp message
+type ReceiveWarpMessageReply struct {
+	MessageID     ids.ID `json:"messageID"`
+	SourceChainID ids.ID `json:"sourceChainID"`
+	TxID          ids.ID `json:"txId"` // Transaction ID for ICM relayer
+	Success       bool   `json:"success"`
+	Message       string `json:"message,omitempty"`
+}
+
+// GetReceivedMessageArgs is the args for getting a received message
+type GetReceivedMessageArgs struct {
+	MessageID ids.ID `json:"messageID"`
+}
+
+// GetReceivedMessageReply is the response for getting a received message
+type GetReceivedMessageReply struct {
+	MessageID       ids.ID `json:"messageID"`
+	SourceChainID   ids.ID `json:"sourceChainID"`
+	SourceAddress   string `json:"sourceAddress"`   // Hex-encoded
+	Payload         string `json:"payload"`         // Hex-encoded or string
+	ReceivedAt      int64  `json:"receivedAt"`      // Unix timestamp
+	BlockHeight     uint64 `json:"blockHeight"`     // Block height when received
+	SignedMessage   string `json:"signedMessage"`   // Hex-encoded
+	UnsignedMessage string `json:"unsignedMessage"` // Hex-encoded
+}
+
+// GetAllReceivedMessagesReply is the response for getting all received messages
+type GetAllReceivedMessagesReply struct {
+	Messages []GetReceivedMessageReply `json:"messages"`
+}
+
+// GetChainID retrieves the blockchain ID and network ID via JSON-RPC
+func (c *Client) GetChainID(
+	ctx context.Context,
+	options ...rpc.Option,
+) (*GetChainIDReply, error) {
+	resp := new(GetChainIDReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.getChainID",
+		&struct{}{},
+		resp,
+		options...,
+	)
+	return resp, err
+}
+
+// SubmitMessage submits a new Warp message to the VM via JSON-RPC
+// Note: The source address is automatically set to the Teleporter precompile address on the server
+func (c *Client) SubmitMessage(
+	ctx context.Context,
+	destinationChain string,
+	destinationAddress string,
+	message string,
+	options ...rpc.Option,
+) (ids.ID, error) {
+	resp := new(SubmitMessageReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.submitMessage",
+		&SubmitMessageArgs{
+			DestinationChain:   destinationChain,
+			DestinationAddress: destinationAddress,
+			Message:            message,
+		},
+		resp,
+		options...,
+	)
+	return resp.MessageID, err
+}
+
+// GetMessage retrieves a message by its ID via JSON-RPC
+func (c *Client) GetMessage(
+	ctx context.Context,
+	messageID ids.ID,
+	options ...rpc.Option,
+) (*GetMessageReply, error) {
+	resp := new(GetMessageReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.getMessage",
+		&GetMessageArgs{
+			MessageID: messageID,
+		},
+		resp,
+		options...,
+	)
+	return resp, err
+}
+
+// GetLatestBlock retrieves the latest accepted block via JSON-RPC
+func (c *Client) GetLatestBlock(
+	ctx context.Context,
+	options ...rpc.Option,
+) (*GetBlockReply, error) {
+	resp := new(GetBlockReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.getLatestBlock",
+		&struct{}{},
+		resp,
+		options...,
+	)
+	return resp, err
+}
+
+// GetBlock retrieves a block by its height via JSON-RPC
+func (c *Client) GetBlock(
+	ctx context.Context,
+	height uint64,
+	options ...rpc.Option,
+) (*GetBlockReply, error) {
+	resp := new(GetBlockReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.getBlock",
+		&GetBlockArgs{
+			Height: height,
+		},
+		resp,
+		options...,
+	)
+	return resp, err
+}
+
+// GetWarpMessage retrieves an unsigned Warp message by its ID via JSON-RPC
+// This is used by relayers to fetch messages for cross-chain delivery
+func (c *Client) GetWarpMessage(
+	ctx context.Context,
+	messageID ids.ID,
+	options ...rpc.Option,
+) (*GetWarpMessageReply, error) {
+	resp := new(GetWarpMessageReply)
+	err := c.Req.SendRequest(
+		ctx,
+		"warpcustomvm.getWarpMessage",
+		&GetWarpMessageArgs{
+			MessageID: messageID,
+		},
+		resp,
+		options...,
+	)
+	return resp, err
+}
