@@ -14,33 +14,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
-func TestEthCompatServer_ChainId(t *testing.T) {
-	// Create a test context with a known chain ID
-	chainID := ids.GenerateTestID()
-	networkID := uint32(1337)
-
-	ctx := &snow.Context{
-		ChainID:   chainID,
-		NetworkID: networkID,
-		Log:       logging.NoLog{},
-	}
-
-	// Create the eth-compatible server
-	server := NewEthCompatServer(ctx)
-
-	// Call the ChainId method
-	var result string
-	err := server.Chainid(nil, &struct{}{}, &result)
-	require.NoError(t, err)
-
-	// Verify the result is in hex format
-	require.NotEmpty(t, result)
-	require.Contains(t, result, "0x")
-
-	t.Logf("Chain ID (hex): %s", result)
-	t.Logf("Chain ID (original): %s", chainID)
-}
-
 func TestServer_GetChainID(t *testing.T) {
 	// Create a test context
 	chainID := ids.GenerateTestID()

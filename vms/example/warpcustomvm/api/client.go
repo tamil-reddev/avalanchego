@@ -12,18 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/rpc"
 )
 
-// TeleporterContractAddress is the deployed Teleporter contract address
-// This is the address that the ICM relayer expects for Teleporter protocol messages
-// Address: 0x253b2784c75e510dD0fF1da844684a1aC0aa5fcf
-var TeleporterContractAddress = []byte{
-	0x25, 0x3b, 0x27, 0x84, 0xc7, 0x5e, 0x51, 0x0d, 0xD0, 0xfF,
-	0x1d, 0xa8, 0x44, 0x68, 0x4a, 0x1a, 0xC0, 0xaa, 0x5f, 0xcf,
-}
-
-// TeleporterPrecompileAddress is an alias - kept for backward compatibility
-// Now points to the Teleporter contract address instead of Warp precompile
-var TeleporterPrecompileAddress = TeleporterContractAddress
-
 // NewClient creates a new JSON-RPC client for warpcustomvm
 func NewClient(uri, chain string) *Client {
 	path := fmt.Sprintf(

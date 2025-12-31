@@ -5,8 +5,10 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -36,11 +38,6 @@ type Server interface {
 	GetAllReceivedMessages(r *http.Request, args *struct{}, reply *GetAllReceivedMessagesReply) error
 }
 
-// EthCompatServer provides EVM-compatible JSON-RPC methods
-type EthCompatServer interface {
-	Chainid(r *http.Request, args *struct{}, reply *string) error
-}
-
 // NewServer creates a new JSON-RPC API server
 func NewServer(
 	ctx *snow.Context,
@@ -56,11 +53,6 @@ func NewServer(
 	}
 }
 
-// NewEthCompatServer creates an EVM-compatible JSON-RPC server
-func NewEthCompatServer(ctx *snow.Context) EthCompatServer {
-	return &ethCompatServer{ctx: ctx}
-}
-
 type server struct {
 	ctx           *snow.Context
 	chain         chain.Chain
@@ -69,16 +61,19 @@ type server struct {
 	msgIDMutex    sync.Mutex // Protects message ID allocation within same block height
 }
 
-type ethCompatServer struct {
-	ctx *snow.Context
-}
-
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
+// parseChainID parses a chain ID from hex (with 0x prefix) or CB58 format
+func parseChainID(s string) (ids.ID, error) {
+	s = strings.TrimPrefix(s, "0x")
+	if len(s) == 64 { // 32 bytes = 64 hex chars
+		bytes, err := hex.DecodeString(s)
+		if err != nil {
+			return ids.ID{}, fmt.Errorf("invalid hex chain ID: %w", err)
+		}
+		var id ids.ID
+		copy(id[:], bytes)
+		return id, nil
 	}
-	return b
+	return ids.FromString(s)
 }
 
 // GetChainID handles the warpcustomvm.getChainID JSON-RPC method
@@ -88,82 +83,28 @@ func (s *server) GetChainID(_ *http.Request, _ *struct{}, reply *GetChainIDReply
 	return nil
 }
 
-// ChainId handles the eth_chainId JSON-RPC method (EVM-compatible)
-// Returns a hardcoded chain ID for testing (0x539 = 1337 in decimal)
-// Note: Gorilla RPC converts eth_chainId -> eth.Chainid (lowercase 'id')
-func (e *ethCompatServer) Chainid(_ *http.Request, _ *struct{}, reply *string) error {
-	//*reply = "0x539"
-	*reply = fmt.Sprintf("0x%x", e.ctx.ChainID)
-	return nil
-}
-
 // SubmitMessage handles the warpcustomvm.submitMessage JSON-RPC method
 func (s *server) SubmitMessage(_ *http.Request, args *SubmitMessageArgs, reply *SubmitMessageReply) error {
-	s.ctx.Log.Info("📥 [API Server] Step 1: Received submitMessage request",
+	s.ctx.Log.Debug("submitMessage request",
 		zap.String("destinationChain", args.DestinationChain),
 		zap.String("destinationAddress", args.DestinationAddress),
-		zap.String("message", args.Message),
 	)
 
-	// Parse destination chain ID from request (supports both hex and cb58 formats)
-	var destinationChainID ids.ID
-	var err error
-
-	s.ctx.Log.Info("📥 [API Server] Step 2: Parsing destination chain ID")
-	// Try parsing as hex first (with or without 0x prefix)
-	destChainStr := args.DestinationChain
-	if len(destChainStr) > 2 && destChainStr[:2] == "0x" {
-		// Hex format with 0x prefix - strip 0x and decode
-		s.ctx.Log.Info("   Detected hex format (0x prefix)")
-		hexStr := destChainStr[2:]
-		if len(hexStr) == 64 { // 32 bytes = 64 hex chars
-			for i := 0; i < 32; i++ {
-				var b byte
-				_, err := fmt.Sscanf(hexStr[i*2:i*2+2], "%02x", &b)
-				if err != nil {
-					s.ctx.Log.Error("   ❌ Invalid hex character", zap.Error(err))
-					return fmt.Errorf("invalid hex in destination chain ID: %w", err)
-				}
-				destinationChainID[i] = b
-			}
-			s.ctx.Log.Info("   ✓ Parsed hex to chain ID", zap.String("chainID", destinationChainID.String()))
-		} else {
-			s.ctx.Log.Error("   ❌ Invalid hex length", zap.Int("got", len(hexStr)), zap.Int("expected", 64))
-			return fmt.Errorf("invalid destination chain ID hex length: expected 64 hex chars, got %d", len(hexStr))
-		}
-	} else {
-		// Try CB58 format (e.g., yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp)
-		s.ctx.Log.Info("   Detected CB58 format")
-		destinationChainID, err = ids.FromString(destChainStr)
-		if err != nil {
-			s.ctx.Log.Error("   ❌ Failed to parse CB58", zap.Error(err))
-			return fmt.Errorf("invalid destination chain ID: %w", err)
-		}
-		s.ctx.Log.Info("   ✓ Parsed CB58 to chain ID", zap.String("chainID", destinationChainID.String()))
+	// Parse destination chain ID (supports hex with 0x prefix or CB58)
+	destinationChainID, err := parseChainID(args.DestinationChain)
+	if err != nil {
+		return fmt.Errorf("invalid destination chain ID: %w", err)
 	}
 
-	// ABI-encode the message as string (your contract expects abi.decode(message, (string)))
-	s.ctx.Log.Info("📥 [API Server] Step 3: ABI-encoding message as string")
+	// ABI-encode the message as string (contract expects abi.decode(message, (string)))
 	stringType, _ := abi.NewType("string", "", nil)
 	abiArgs := abi.Arguments{{Type: stringType}}
 	userMessage, err := abiArgs.Pack(args.Message)
 	if err != nil {
-		s.ctx.Log.Error("❌ Failed to ABI-encode message", zap.Error(err))
 		return fmt.Errorf("failed to encode message as string: %w", err)
 	}
-	s.ctx.Log.Info("   ✓ Message ABI-encoded",
-		zap.Int("originalLength", len(args.Message)),
-		zap.Int("encodedLength", len(userMessage)),
-		zap.String("encodedHex", fmt.Sprintf("0x%x", userMessage)),
-	)
 
-	// Allocate message ID from consensus state counter
-	// Race condition note: Multiple nodes CAN allocate the same ID if they submit simultaneously
-	// However, only ONE block will be built and accepted, and that block's counter increment wins
-	// The other node's duplicate message will either:
-	//   1) Not be included if block building happens after acceptance (correct counter used)
-	//   2) Be included with duplicate ID but rejected by destination chain (Teleporter handles this)
-	s.ctx.Log.Info("📥 [API Server] Step 4: Allocating Teleporter ID from consensus counter")
+	// Allocate Teleporter message ID from consensus counter
 	s.msgIDMutex.Lock()
 	lastMessageID, err := state.GetLastMessageID(s.acceptedState)
 	if err != nil {
@@ -173,93 +114,45 @@ func (s *server) SubmitMessage(_ *http.Request, args *SubmitMessageArgs, reply *
 	teleporterMsgID := lastMessageID + 1
 	s.msgIDMutex.Unlock()
 
-	s.ctx.Log.Info("   ✓ Teleporter ID allocated from consensus state",
-		zap.Uint64("teleporterMessageID", teleporterMsgID),
-		zap.Uint64("lastCommittedID", lastMessageID),
-	)
-
-	s.ctx.Log.Info("📥 [API Server] Step 5: Encoding Teleporter message")
-	encodedPayload, err := teleporter.CreateProperTeleporterMessageWithAddress(
+	// Encode Teleporter message
+	encodedPayload, err := teleporter.CreateTeleporterMessage(
 		teleporterMsgID,
 		destinationChainID,
 		args.DestinationAddress,
 		userMessage,
 	)
 	if err != nil {
-		s.ctx.Log.Error("❌ Failed to create proper teleporter message, trying minimal format", zap.Error(err))
-
-		// Fallback to minimal format
-		encodedPayload, err = teleporter.CreateMinimalTeleporterPayload(destinationChainID, userMessage)
-		if err != nil {
-			s.ctx.Log.Error("❌ Failed to encode with minimal format too", zap.Error(err))
-			return fmt.Errorf("failed to encode Teleporter message: %w", err)
-		}
+		return fmt.Errorf("failed to encode Teleporter message: %w", err)
 	}
 
-	s.ctx.Log.Info("📥 [API Server] Step 6: ✓ Teleporter payload encoded",
-		zap.Int("encodedSize", len(encodedPayload)),
-		zap.String("first64Bytes", fmt.Sprintf("0x%x", encodedPayload[:min(64, len(encodedPayload))])),
-	)
-
-	// ICM relayer expects: Warp → AddressedCall → Teleporter Message
-	// The AddressedCall wraps the Teleporter message with a source address
-	sourceAddress := TeleporterPrecompileAddress
-	s.ctx.Log.Info("📥 [API Server] Step 7: Creating AddressedCall wrapper",
-		zap.String("sourceAddress", fmt.Sprintf("0x%x", sourceAddress)),
-		zap.Int("teleporterPayloadSize", len(encodedPayload)),
-	)
-
-	// Wrap Teleporter message in AddressedCall
-	addressedCall, err := payload.NewAddressedCall(
-		sourceAddress,
-		encodedPayload, // This is the Teleporter message
-	)
+	// Create AddressedCall wrapper (ICM expects: Warp → AddressedCall → Teleporter)
+	sourceAddress := teleporter.TeleporterContractAddress.Bytes()
+	addressedCall, err := payload.NewAddressedCall(sourceAddress, encodedPayload)
 	if err != nil {
-		s.ctx.Log.Error("❌ Failed to create addressed call", zap.Error(err))
 		return fmt.Errorf("failed to create addressed call: %w", err)
 	}
-	s.ctx.Log.Info("   ✓ AddressedCall created", zap.Int("size", len(addressedCall.Bytes())))
 
-	// Create unsigned Warp message with AddressedCall payload
-	s.ctx.Log.Info("📥 [API Server] Step 8: Creating unsigned Warp message",
-		zap.Uint32("networkID", s.ctx.NetworkID),
-		zap.String("sourceChainID", s.ctx.ChainID.String()),
-	)
+	// Create unsigned Warp message
 	unsignedMsg, err := warpmsg.NewUnsignedMessage(
 		s.ctx.NetworkID,
 		s.ctx.ChainID,
-		addressedCall.Bytes(), // AddressedCall wraps the Teleporter message
+		addressedCall.Bytes(),
 	)
 	if err != nil {
-		s.ctx.Log.Error("❌ Failed to create warp message", zap.Error(err))
 		return fmt.Errorf("failed to create warp message: %w", err)
 	}
-	s.ctx.Log.Info("   ✓ Unsigned Warp message created",
-		zap.Int("totalSize", len(unsignedMsg.Bytes())),
-	)
 
-	// Compute message ID from the unsigned message bytes
-	messageIDHash := hashing.ComputeHash256Array(unsignedMsg.Bytes())
-	messageID := ids.ID(messageIDHash)
-	s.ctx.Log.Info("📥 [API Server] Step 9: Computed Warp message ID",
-		zap.String("messageID", messageID.String()),
-		zap.String("messageIDHex", fmt.Sprintf("0x%x", messageID[:])),
-	)
+	// Compute message ID from unsigned message bytes
+	messageID := ids.ID(hashing.ComputeHash256Array(unsignedMsg.Bytes()))
 
-	// Add to pending messages - builder will embed full message bytes in next block
-	// The block will propagate through consensus, ensuring all validators get the message
-	s.ctx.Log.Info("📥 [API Server] Step 10: Adding message to builder")
+	// Add to builder for inclusion in next block
 	if err := s.builder.AddMessage(context.Background(), messageID, unsignedMsg); err != nil {
-		s.ctx.Log.Error("❌ Failed to add message to builder", zap.Error(err))
 		return err
 	}
-	s.ctx.Log.Info("   ✓ Message added to builder successfully")
 
-	s.ctx.Log.Info("📥 [API Server] ✅ Step 11: Teleporter message submitted successfully!",
-		zap.String("messageID", messageID.String()),
-		zap.String("destinationChain", destinationChainID.String()),
-		zap.String("destinationAddress", args.DestinationAddress),
-		zap.String("userMessage", args.Message),
+	s.ctx.Log.Info("teleporter message submitted",
+		zap.Stringer("messageID", messageID),
+		zap.Stringer("destinationChain", destinationChainID),
 	)
 
 	reply.MessageID = messageID
@@ -359,36 +252,6 @@ func (s *server) GetLatestBlock(_ *http.Request, _ *struct{}, reply *GetBlockRep
 	}
 
 	return nil
-}
-
-// getNextTeleporterMessageID allocates the next Teleporter message ID
-// Uses a simple global incrementing counter stored in accepted state
-// This ensures all validators get the same IDs and prevents duplicates
-func (s *server) getNextTeleporterMessageID() (uint64, error) {
-	// Lock to prevent race conditions during message ID allocation
-	s.msgIDMutex.Lock()
-	defer s.msgIDMutex.Unlock()
-
-	// Get the last allocated message ID
-	lastMessageID, err := state.GetLastMessageID(s.acceptedState)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get last message ID: %w", err)
-	}
-
-	// Increment to get next ID
-	nextMessageID := lastMessageID + 1
-
-	// Store the new message ID in accepted state
-	if err := state.SetLastMessageID(s.acceptedState, nextMessageID); err != nil {
-		return 0, fmt.Errorf("failed to update last message ID: %w", err)
-	}
-
-	s.ctx.Log.Info("✓ Teleporter message ID allocated",
-		zap.Uint64("messageID", nextMessageID),
-		zap.Uint64("previousID", lastMessageID),
-	)
-
-	return nextMessageID, nil
 }
 
 // GetBlock handles the warpcustomvm.getBlock JSON-RPC method

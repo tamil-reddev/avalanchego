@@ -4,11 +4,9 @@
 package warpcustomvm
 
 import (
-	"bytes"
 	"context"
 	stdjson "encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -203,65 +201,10 @@ func (vm *VM) CreateHandlers(context.Context) (map[string]http.Handler, error) {
 		return nil, fmt.Errorf("failed to register service: %w", err)
 	}
 
-	// Create and register EVM-compatible API service for eth_chainId
-	ethCompatServer := api.NewEthCompatServer(vm.chainContext)
-	if err := server.RegisterService(ethCompatServer, "eth"); err != nil {
-		return nil, fmt.Errorf("failed to register eth service: %w", err)
-	}
-
-	// Create a custom Ethereum JSON-RPC handler that handles eth_* methods
-	// This provides exact compatibility with C-Chain's eth_chainId format
-	ethRPCHandler := api.NewEthRPCHandler(vm.chainContext)
-
-	// Create a multiplexer that routes requests
-	mux := http.NewServeMux()
-	mux.Handle("/", &combinedHandler{
-		ethHandler: ethRPCHandler,
-		rpcServer:  server,
-	})
-
 	return map[string]http.Handler{
-		"":     mux,
-		"/rpc": mux,
+		"":     server,
+		"/rpc": server,
 	}, nil
-}
-
-// combinedHandler routes requests to either the Ethereum handler or Gorilla RPC server
-type combinedHandler struct {
-	ethHandler *api.EthRPCHandler
-	rpcServer  http.Handler
-}
-
-func (h *combinedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Try to parse the request to see if it's an eth_* method
-	if r.Method == http.MethodPost {
-		// Peek at the request body to determine routing
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			h.rpcServer.ServeHTTP(w, r)
-			return
-		}
-		defer r.Body.Close()
-
-		// Try to parse as JSON-RPC request
-		var req struct {
-			Method string `json:"method"`
-		}
-		if err := stdjson.Unmarshal(body, &req); err == nil {
-			// Route eth_* methods to the custom Ethereum handler
-			if len(req.Method) >= 4 && req.Method[:4] == "eth_" {
-				// Recreate the request body since we consumed it
-				r.Body = io.NopCloser(bytes.NewBuffer(body))
-				h.ethHandler.ServeHTTP(w, r)
-				return
-			}
-		}
-
-		// For all other methods, use the Gorilla RPC server
-		r.Body = io.NopCloser(bytes.NewBuffer(body))
-	}
-
-	h.rpcServer.ServeHTTP(w, r)
 }
 
 // CreateStaticHandlers implements the block.ChainVM interface
